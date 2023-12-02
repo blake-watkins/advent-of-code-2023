@@ -1,0 +1,32 @@
+(in-package :aoc-2023)
+
+(defun parse-calibration-value ()
+  (either (parse-digit)
+	  (then (parse-lower-case) (unit 0))))
+
+(defun parse-calibration-value-2 ()
+  (either (parse-digit)
+	  (then (parse-string "one") (unit 1))
+	  (then (parse-string "two") (unit 2))
+	  (then (parse-string "three") (unit 3))
+	  (then (parse-string "four") (unit 4))
+	  (then (parse-string "five") (unit 5))
+	  (then (parse-string "six") (unit 6))
+	  (then (parse-string "seven") (unit 7))
+	  (then (parse-string "eight") (unit 8))
+	  (then (parse-string "nine") (unit 9))
+	  (then (parse-lower-case) (unit 0))))
+
+(defun get-values (input)
+  (if (string-equal input "")
+      '()
+      (cons (run-parser (parse-calibration-value-2) input)
+	    (get-values (subseq input 1)))))
+
+(defun first-last (value)
+  (let ((removed-zero (remove 0 value)))
+    (+ (* 10 (first removed-zero)) (car (last removed-zero)))))
+
+(defun day1 (input &key (part 1))
+  (let (( parsed (run-parser (parse-lines (parse-word)) input)))    
+     (mapcar (lambda (x) (first-last (get-values x))) parsed)))
