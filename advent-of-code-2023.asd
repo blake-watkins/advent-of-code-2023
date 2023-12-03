@@ -6,4 +6,5 @@
   :depends-on ("advent-of-code" "iterate" "fset" "str")
   :components ((:file "package")
                (:file "day1" :depends-on ("package"))
-	       (:file "day2" :depends-on ("package"))))
+	       (:file "day2" :depends-on ("package"))
+               (:file "day3" :depends-on ("package"))))
