@@ -57,12 +57,12 @@
 (defun day3 (input &key (part 1))
   (destructuring-bind (numbers symbols) (get-numbers-and-symbols input)
     (if (= part 1)
-	(iter outer
+	(iter
 	  (for number in numbers)
-	  (iter
-	    (for symbol in symbols)
-	    (when (number-near-symbol? number symbol)
-	      (in outer (sum (second number))))))
+	  (when (iter
+		  (for symbol in symbols)
+		  (thereis (number-near-symbol? number symbol)))
+	    (sum number)))
 	(iter
 	  (for symbol in symbols)
 	  (for gear-ratio = (gear-ratio numbers symbol))
