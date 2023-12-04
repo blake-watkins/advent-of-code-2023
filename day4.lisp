@@ -16,23 +16,25 @@
 
 (defun winning-count (card)
   (iter
-    (for number in (third card))
-    (counting (find number (second card)))))
+    (with (nil winning-numbers my-numbers) = card)
+    (for number in my-numbers)
+    (count (find number winning-numbers))))
 
 (defun card-score (card)
   (let ((winning-count (winning-count card)))
     (if (> winning-count 0) (expt 2 (1- winning-count)) 0)))
 
 (defun day4 (input &key (part 1))
-  (let* ((parsed (run-parser (parse-file) input)))
+  (let* ((cards (run-parser (parse-file) input)))
     (if (= part 1)
-        (reduce #'+ (mapcar #'card-score parsed))
+        (reduce #'+ (mapcar #'card-score cards))
         (iter
-          (with repeats = (make-hash-table :test 'eq))
-          (for card in parsed)
+          (with instances = (make-hash-table))
+          (for card in cards)
+          (for card-num = (first card))
+          (for num-instances = (gethash card-num instances 1))
+          (sum num-instances)
           (iter
-            (for i from 1)
             (repeat (winning-count card))
-            (incf (gethash (+ (first card) i) repeats 1)
-                  (gethash (first card) repeats 1)))
-          (sum (gethash (first card) repeats 1))))))
+            (for i from (1+ card-num))
+            (incf (gethash i instances 1) num-instances))))))
