@@ -2,87 +2,8 @@
 
 (defun parse-card ()
   (either (parse-digit)
-          (bind (parse-alphanumeric) (lambda (c) (unit (intern (string (char-upcase c)) :keyword))))))
-
-(defun count-hand (hand)
-  (iter
-    (with ret = (make-hash-table))
-    (for card in hand)
-    (incf (gethash card ret 0))
-    (finally (return (sort (alexandria:hash-table-alist ret) #'> :key #'cdr)))))
-
-(defun hand-type (hand)
-  (let ((counts (count-hand hand)))
-    (cond
-      ((= 1 (length counts)) :five-of-a-kind)
-      ((= 4 (cdr (first counts))) :four-of-a-kind)
-      ((and (= 3 (cdr (first counts)))
-            (= 2 (cdr (second counts)))) :full-house)
-      ((= 3 (cdr (first counts))) :three-of-a-kind)
-      ((and (= 2 (cdr (first counts)))
-            (= 2 (cdr (second counts)))) :two-pair)
-      ((= 2 (cdr (first counts))) :one-pair)
-      (t :high-card))))
-
-(defun hand-type-2 (hand)
-  (hand-type (get-best-hand hand)))
-
-(defun num-jokers (hand)
-  (iter
-    (for card in hand)
-    (counting (eq :j card))))
-
-(defun compare-cards (a b)
-  (let ((order '(:a :k :q :j :t 9 8 7 6 5 4 3 2)))
-    (- (position b order) (position a order))))
-
-(defun compare-cards-2 (a b)
-  (let ((order '(:a :k :q :t 9 8 7 6 5 4 3 2 :j)))
-    (- (position b order) (position a order))))
-
-(defun compare-hands (a b)
-  (let* ((order '(:five-of-a-kind :four-of-a-kind :full-house :three-of-a-kind
-                  :two-pair :one-pair :high-card))
-         (type-compare (- (position (hand-type b) order)                          
-                          (position (hand-type a) order))))
-    (if (= 0 type-compare)
-        (let ((card-compare (iter
-                              (for card-a in a)
-                              (for card-b in b)
-                              (for card-compare = (compare-cards card-a card-b))
-                              (finding card-compare such-that (not (= 0 card-compare))))))
-          (if card-compare card-compare 0))        
-        type-compare)))
-
-(defun compare-hands-2 (a b type-a type-b)
-  (let* ((order '(:five-of-a-kind :four-of-a-kind :full-house :three-of-a-kind
-                  :two-pair :one-pair :high-card))
-         (type-compare (- (position type-b order)                          
-                          (position type-a order))))
-    (if (= 0 type-compare)
-        (let ((card-compare (iter
-                              (for card-a in a)
-                              (for card-b in b)
-                              (for card-compare = (compare-cards-2 card-a card-b))
-                              (finding card-compare such-that (not (= 0 card-compare))))))
-          (if card-compare card-compare 0))        
-        type-compare)))
-
-(defun get-all-hands (hand-so-far hand-remaining)
-  (if (null hand-remaining)
-      (list hand-so-far)
-      (if (not (eq :j (car hand-remaining)))
-          (get-all-hands (cons (car hand-remaining) hand-so-far)
-                         (cdr hand-remaining))
-          (iter
-            (for card in '(:a :k :q :j :t 9 8 7 6 5 4 3 2))
-            (appending (get-all-hands (cons card hand-so-far)
-                                      (cdr hand-remaining)))))))
-
-(defun get-best-hand (hand)
-  (let ((all-hands (get-all-hands '() hand)))
-    (first (sort all-hands
-                 (lambda (a b) (>= (compare-hands a b) 0))))))
+          (bind (parse-alphanumeric)
+                (lambda (c) (unit (intern (string (char-upcase c)) :keyword))))))
 
 (defun parse-file ()
   (parse-lines
@@ -92,15 +13,60 @@
      (assign bid (parse-number))
      (unit (list cards bid)))))
 
-(defun day7 (input)
-  (let* ((parsed (run-parser (parse-file) input))
-         (part2 (iter
-                  (for (hand bid) in parsed)
-                  (collect (list hand (hand-type-2 hand) bid)))))
+(defparameter *part-1-order* '(:a :k :q :j :t 9 8 7 6 5 4 3 2))
+(defparameter *part-2-order* '(:a :k :q :t 9 8 7 6 5 4 3 2 :j))
+(defparameter *hand-types* '(((5) :five-of-a-kind)
+                             ((4 1) :four-of-a-kind)
+                             ((3 2) :full-house)
+                             ((3 1 1) :three-of-a-kind)
+                             ((2 2 1) :two-pair)
+                             ((2 1 1 1) :pair)
+                             ((1 1 1 1 1) :high-card)))
+
+(defun count-cards (hand)
+  (iter
+    (with ret = (make-hash-table))
+    (for card in hand)
+    (incf (gethash card ret 0))
+    (finally (return (sort (alexandria:hash-table-alist ret) #'> :key #'cdr)))))
+
+(defun hand-type (hand part)
+  (let* ((type-and-count (count-cards hand))
+         (count
+           (if (= part 1)
+               (mapcar #'cdr type-and-count)
+               (let ((jokers (find :j type-and-count :key #'car))
+                     (without-jokers (remove :j type-and-count :key #'car)))
+                 (cond
+                   ((and jokers (= 5 (cdr jokers))) '(5))
+                   (jokers (cons (+ (cdr (first without-jokers)) (cdr jokers))
+                                 (mapcar #'cdr (rest without-jokers))))
+                   (t (mapcar #'cdr without-jokers)))))))
     (iter
-      (for (hand type bid) in
-           (sort part2
-                 (lambda (a b) (<= (compare-hands-2 (first a) (first b) (second a) (second b)) 0))))
+      (for (pattern type) in *hand-types*)
+      (finding type such-that (equal pattern count)))))
+
+(defun compare-hands (a b part)
+  (let ((hand-type-compare
+          (- (position (hand-type b part) *hand-types* :key #'second)
+             (position (hand-type a part) *hand-types* :key #'second))))
+    (if (= 0 hand-type-compare)
+        (let ((order (if (= part 1) *part-1-order* *part-2-order*)))
+          (or (iter
+                (for card-a in a)
+                (for card-b in b)
+                (for card-compare = (- (position card-b order)
+                                       (position card-a order)))
+                (finding card-compare such-that (not (= 0 card-compare))))
+              0))
+        hand-type-compare)))
+
+(defun day7 (input &key (part 1))
+  (let* ((parsed (run-parser (parse-file) input)))
+    (iter
+      (for (hand bid) in
+           (sort parsed
+                 (lambda (a b) (<= (compare-hands a b part) 0))
+                 :key #'first))
       (for rank from 1)
-      (summing (* bid rank)))
-    ))
+      (summing (* bid rank)))))
