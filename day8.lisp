@@ -16,8 +16,7 @@
     (unit (list directions network))))
 
 (defun make-circular (lst)
-  (setf (cdr (last lst)) lst)
-  lst)
+  (setf (cdr (last lst)) lst))
 
 (defun locations-ending-with (network char)
   (iter 
@@ -38,11 +37,11 @@
 
 (defun day8 (input &key (part 1))
   (destructuring-bind (directions network) (run-parser (parse-file) input)
+    (setf directions (make-circular directions))
     (if (= part 1)
-        (steps-to-finish (make-circular directions) network :aaa '(:zzz))
+        (steps-to-finish directions network :aaa '(:zzz))
         (apply #'lcm
                (iter
-                 (with directions = (make-circular directions))
                  (with end-symbols = (locations-ending-with network #\Z))
                  (for start-symbol in (locations-ending-with network #\A))
                  (collect
