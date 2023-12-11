@@ -19,10 +19,8 @@
       (finally (return (list start-pos ret))))))
 
 ;;store offset and position of this cell in relation to neighbour
-(defparameter *directions* '(((-1 0) :north)
-			     ((0 1) :east)
-			     ((1 0) :south)
-			     ((0 -1) :west)))
+(defparameter *directions*
+  '(((-1 0) :north) ((0 1) :east) ((1 0) :south) ((0 -1) :west)))
 
 (defparameter *pipe-types* '((#\| (:north :south))
 			     (#\- (:east :west))
@@ -33,6 +31,7 @@
 			     (#\S (:north :south :east :west))))
 
 (defun pipe-connected? (a b map)
+  "Are A and B both correctly pointing at each other to make a pipe?"
   (flet ((connected-one-way? (a b map)
 	   (let* ((offset (point- b a))
 		  (dir (find offset *directions* :test 'equal :key #'first))
@@ -44,12 +43,14 @@
     (and (connected-one-way? a b map) (connected-one-way? b a map))))
 
 (defun pipe-neighbours (pos map)
+  "Return list of (POS DIR) pairs that are correctly connected neighbours of POS."
   (iter
     (for (offset dir) in *directions*)
     (for next-pos = (point+ offset pos))
     (when (pipe-connected? pos next-pos map) (collect (list next-pos dir)))))
 
 (defun mark-loop (loop-squares)
+  "Return hash table with all squares in LOOP-SQUARES marked as :LOOP."
   (iter
     (with ret = (make-hash-table :test 'equal))
     (for square in loop-squares)
@@ -59,16 +60,19 @@
 (define-condition outside-map (condition) ())
 
 (defun can-mark? (pos marked map)
+  "Is POS on the map and unmarked? Signal 'OUTSIDE-MAP condition if outside map."
   (when (not (gethash pos map)) (signal 'outside-map))
   (and (gethash pos map) (not (gethash pos marked))))
 
 (defun unmarked-neighbours (pos marked map)
+  "Return list of neighbours that can be marked. "
   (iter
     (for (offset nil) in *directions*)
     (for next-square = (point+ pos offset))
     (when (can-mark? next-square marked map) (collect next-square))))
 
 (defun mark-connected (from mark marked map)
+  "Mark all connected neighbours of FROM with MARK. Alters MARKED hash table."
   (when (can-mark? from marked map)
     (iter
       (for (pos . nil)
@@ -79,35 +83,33 @@
       (setf (gethash pos marked) mark))))
 
 (defun turn (dir rotation)
-  (elt *directions* (mod (+ (position dir *directions* :key #'second)
-			    (ecase rotation (:cw 1) (:ccw -1)))
-			 (length *directions*))))
+  "Return element of *DIRECTIONS* list corresponding to DIR (:north etc) rotated by ROTATION (:cw, :ccw etc). "
+  (elt *directions*
+       (mod (+ (position dir *directions* :key #'second)
+	       (ecase rotation (:cw 1) (:ccw -1)))
+	    (length *directions*))))
 
-(defun mark-loop-sides (pos dir marked map)
+(defparameter *outside-mark* nil)
+
+(defun mark-pos-sides (pos dir marked map)
+  "Mark sides of pos with different marks. Alters MARKED hash table. Handles 'OUTSIDE-MAP condition and sets *OUTSIDE-MARK* if any landed outside the map."
   (iter
-    (with outside-mark = nil)
-    (for (rotation mark) in '((:cw :a) (:ccw :b)))
+    (for rotation in '(:cw :ccw))
     (handler-case (mark-connected (point+ pos (first (turn dir rotation)))
-				  mark marked map)
-      (outside-map () (setf outside-mark mark)))
-    (finally (return outside-mark))))
+				  rotation marked map)
+      (outside-map () (setf *outside-mark* rotation)))))
 
 (defun walk-loop (start-pos marked map)
   (iter
-    (with outside-mark = nil)
     (for prev-pos previous pos)
     (for pos initially start-pos then next-pos)
     (for neighbours =
 	 (remove prev-pos (pipe-neighbours pos map) :test 'equal :key #'first))
     (for (next-pos dir) = (first neighbours))
     (for prev-dir previous dir)
-    (setf outside-mark
-	  (or (mark-loop-sides pos dir marked map) outside-mark))
-    (when (and prev-dir (not (eq prev-dir dir)))
-      (setf outside-mark
-	    (or (mark-loop-sides pos prev-dir marked map) outside-mark)))
-    (until (and prev-pos (equal pos start-pos)))
-    (finally (return outside-mark))))
+    (mapc (lambda (dir) (mark-pos-sides pos dir marked map))
+	  (remove nil (list dir prev-dir)))
+    (until (and prev-pos (equal pos start-pos)))))
 
 (defun count-table (marked)
   (iter
@@ -128,11 +130,11 @@
 	  (collect pos into loop)
 	  (maximizing steps)
 	  (finally (return (list steps loop))))
-      (let* ((marked (mark-loop loop-squares))
-	     (outside-mark (walk-loop start-pos marked map))
-	     (count-marks (count-table marked)))
-	(if (= part 1)
-	    steps
-	    (gethash (if (eq outside-mark :a) :b :a) count-marks))))))
+      (if (= part 1)
+	  steps
+	  (let ((marked (mark-loop loop-squares)))
+	    (walk-loop start-pos marked map)
+	    (gethash (if (eq *outside-mark* :cw) :ccw :cw)
+		     (count-table marked)))))))
 
 
