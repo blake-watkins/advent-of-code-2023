@@ -15,4 +15,5 @@
 	       (:file "day8" :depends-on ("package"))
 	       (:file "day9" :depends-on ("package"))
                (:file "day10" :depends-on ("package"))
-               (:file "day11" :depends-on ("package"))))
+               (:file "day11" :depends-on ("package"))
+               (:file "day12" :depends-on ("package"))))
