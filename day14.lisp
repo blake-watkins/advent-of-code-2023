@@ -1,89 +1,64 @@
 (in-package :aoc-2023)
 
 (defun parse-file ()
-  (parse-lines (one-or-more (bind (parse-character "O.#")
-                                  (lambda (c)
-                                    (unit
-                                     (case c
-                                       (#\. :blank)
-                                       (#\# :fixed)
-                                       (#\O :round))))))))
+  (parse-lines
+   (one-or-more
+    (with-monad
+      (assign char (parse-character "O.#"))
+      (unit (case char (#\. :blank) (#\# :fixed) (#\O :round)))))))
 
-(defun roll-north (rocks map)
+(defun roll-north (rocks)
   (iter
-    (for c below (length (first map)))
-    (appending
-     (iter
-       (with rock-idx = 0)
-       (for row in map)
-       (for r from 0)
-       (cond
-         ((eq (elt (elt map r) c) :fixed) (setf rock-idx (1+ r)))
-         ((member (list r c) rocks :test 'equal)
-          (progn
-            (collect (list rock-idx c))
-            (incf rock-idx))))))))
+    (with next-rock-index = (make-hash-table))
+    (for ((r c) rock-type) in rocks)
+    (case rock-type
+      (:fixed
+       (collect (list (list r c) :fixed))
+       (setf (gethash c next-rock-index 0) (1+ r)))
+      (:round
+       (collect (list (list (gethash c next-rock-index 0) c) :round))
+       (incf (gethash c next-rock-index 0))))))
 
-(defun roll-south (rocks map)
+(defun north-load (rocks map-rows)
   (iter
-    (for c below (length (first map)))
-    (appending
-     (iter
-       (with rock-idx = (1- (length map)))
-       (for r from (1- (length map)) downto 0)
-       (cond
-         ((eq (elt (elt map r) c) :fixed) (setf rock-idx (1- r)))
-         ((member (list r c) rocks :test 'equal)
-          (progn
-            (collect (list rock-idx c))
-            (decf rock-idx))))))))
+    (for ((r c) rock-type) in rocks)
+    (when (eq rock-type :round)
+      (sum (- map-rows r)))))
 
-(defun roll-west (rocks map)
+(defun rotate-rocks (rocks map-rows)
   (iter
-    (for r below (length map))
-    (appending
-     (iter
-       (with rock-idx = 0)
-       (for c from 0 below (length (first map)))
-       (cond
-         ((eq (elt (elt map r) c) :fixed) (setf rock-idx (1+ c)))
-         ((member (list r c) rocks :test 'equal)
-          (progn
-            (collect (list r rock-idx))
-            (incf rock-idx))))))))
+    (for ((r c) rock-type) in rocks)
+    (collect `((,c ,(- map-rows 1 r)) ,rock-type) into ret)
+    (finally (return (sort ret #'topmost-leftmost<)))))
 
-(defun roll-east (rocks map)
+(defun topmost-leftmost< (a b)
+  (or (and (= (caar a) (caar b)) (< (cadar a) (cadar b)))
+      (< (caar a) (caar b))))
+
+(defun cycle (rocks map-rows)
   (iter
-    (for r below (length map))
-    (appending
-     (iter
-       (with rock-idx = (1- (length (first map))))
-       (for c from (1- (length (first map))) downto 0)
-       (cond
-         ((eq (elt (elt map r) c) :fixed) (setf rock-idx (1- c)))
-         ((member (list r c) rocks :test 'equal)
-          (progn
-            (collect (list r rock-idx))
-            (decf rock-idx))))))))
+    (repeat 4)
+    (setf rocks (roll-north rocks))
+    (setf rocks (rotate-rocks rocks map-rows))
+    (finally (return rocks))))
 
-(defun north-load (rocks map)
-  (iter
-    (for (r c) in rocks)
-    (sum (- (length map) r))))
-
-(defun day14 (input)
-  (let* ((parsed (run-parser (parse-file) input))
-        (rocks (iter
-                 (for row in parsed)
-                 (for r from 0)
-                 (appending (iter
-                              (for square in row)
-                              (for c from 0)
-                              (when (eq square :round) (collect (list r c))))))))
+(defun get-rocks (map)
+  (iter outer
+    (for row in map)
+    (for r from 0)
     (iter
-      (repeat 200)
-      (setf rocks (roll-north rocks parsed))
-      (setf rocks (roll-west rocks parsed))
-      (setf rocks (roll-south rocks parsed))
-      (setf rocks (roll-east rocks parsed))
-      (collect (north-load rocks parsed)))))
+      (for rock-type in row)
+      (for c from 0)
+      (unless (eq :blank rock-type)
+        (in outer (collect `((,r ,c) ,rock-type)))))))
+
+(defun day14 (input &key (part 1))
+  (let* ((parsed (run-parser (parse-file) input))
+         (rocks (get-rocks parsed))
+         (map-rows (length parsed)))
+    (if (= part 1)
+        (north-load (roll-north rocks) map-rows)
+        (iter
+          (repeat 200)
+          (setf rocks (cycle rocks map-rows))
+          (collect (north-load rocks map-rows))))))
