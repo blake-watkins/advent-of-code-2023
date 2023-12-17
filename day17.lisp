@@ -11,8 +11,10 @@
             (length *directions*))))
 
 (defun neighbours (pos dir straight map)
-  (let ((dirs `((,(turn dir :cw) 1) (,(turn dir :ccw) 1))))
-    (when (< straight 3) (push (list dir (1+ straight)) dirs))
+  (let ((dirs (if (>= straight 4)
+                  `((,(turn dir :cw) 1) (,(turn dir :ccw) 1))
+                  ())))
+    (when (< straight 10) (push (list dir (1+ straight)) dirs))
     (remove-if-not
      (lambda (pos) (gethash pos map))
      (mapcar (lambda (info) `((,(point+ pos (first info))
@@ -29,10 +31,11 @@
     (iter
       (with end = (hash-table-dimensions map))
       (with parents = (make-hash-table :test 'equal))
-      (for (vertex parent distance) in-dijkstra-from '((0 0) (0 1) 0)
+      (for (vertex parent distance) in-dijkstra-from '((0 0) (1 0) 0)
            :neighbours (lambda (info)
                          (neighbours (first info) (second info) (third info) map)))
       (unless (gethash (first vertex) parents)
         (setf (gethash (first vertex) parents) (first parent)))
-      (until (equal end (first vertex)))
+      (until (and (equal end (first vertex))
+                  (>= (third vertex) 4)))
       (finally (return distance)))))
