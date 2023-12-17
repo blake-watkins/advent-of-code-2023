@@ -26,17 +26,16 @@
       (case dir ((:north :south) '(:east :west)) (t (list dir)))))
 
 (defun next-positions (pos dir map)
-  (let ((positions (case (gethash pos map)
-		     (#\.
-		      (list (next-square pos dir)))
-		     ((#\/ #\\)
-		      (list (next-square pos (reflect dir (gethash pos map)))))
-		     ((#\| #\-)
-		      (mapcar (lambda (dir) (next-square pos dir))
-			      (split dir (gethash pos map)))))))
-    (remove-if-not (lambda (pos) (gethash pos map))
-		   positions
-		   :key #'first)))
+  (let* ((type (gethash pos map))
+	 (positions
+	   (case type
+	     (#\.
+	      (list (next-square pos dir)))
+	     ((#\/ #\\)
+	      (list (next-square pos (reflect dir type))))
+	     ((#\| #\-)
+	      (mapcar (lambda (dir) (next-square pos dir)) (split dir type))))))
+    (remove-if-not (lambda (pos) (gethash pos map)) positions :key #'first)))
 
 (defun count-energized (start-pos start-dir map)
   (iter
