@@ -3,10 +3,9 @@
 (defun parse-hex-code ()
   (with-monad
     (parse-character #\#)
-    (assign dist-digits (n-of 5 (parse-digit :base 16)))
-    (assign dir-digit (parse-character "0123"))
-    (unit (list (case dir-digit (#\0 :r) (#\1 :d) (#\2 :l) (#\3 :u))
-                (digits-to-int dist-digits :base 16)))))
+    (assign distance (parse-subparser 5 (parse-number :base 16)))
+    (assign direction (parse-character "0123"))
+    (unit (list (case direction (#\0 :r) (#\1 :d) (#\2 :l) (#\3 :u)) distance))))
 
 (defun parse-file (part)
   (if (= part 1)
@@ -39,7 +38,7 @@
 ;; https://en.wikipedia.org/wiki/Shoelace_formula
 (defun area (corners)
   (/ (iter
-       (for (a b . rest) on corners)
+       (for (a b) on corners)
        (when (null b) (setf b (first corners)))
        (summing (- (* (first a) (second b)) (* (first b) (second a)))))
      2))
