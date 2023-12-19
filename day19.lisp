@@ -74,15 +74,15 @@
   (destructuring-bind (part-name op val dest) rule
     (declare (ignore dest))
     (case op
-      (#\< (list part-name (list 0 (1- val))))
-      (#\> (list part-name (list val 4000))))))
+      (#\< (list part-name (list 1 (1- val))))
+      (#\> (list part-name (list (1+ val) 4000))))))
 
 (defun reject-range (rule)
   (destructuring-bind (part-name op val dest) rule
     (declare (ignore dest))
     (case op
       (#\< (list part-name (list val 4000)))
-      (#\> (list part-name (list 0 (1- val)))))))
+      (#\> (list part-name (list 1 val))))))
 
 (defun limit-ratings (range ratings)
   (destructuring-bind (range-name range-range) range
@@ -95,15 +95,22 @@
             ratings)))
 
 (defun count-accepted (workflow prev-workflows accepted workflows)
-  (if (member workflow prev-workflows)
-      0
-      (iter
+  (format t "~a ~a~%" (cons workflow prev-workflows) accepted)
+;;  (break)
+  (cond
+    ((member workflow prev-workflows) 0)
+    ((member workflow '(:a :r))
+     (ecase workflow
+       (:a (count-accepted-ratings accepted))
+       (:r 0)))
+    (t (iter
         (for rule in (gethash workflow workflows))
         (summing
          (if (symbolp rule)
-             (ecase workflow
-               (:a (count-accepted-ratings accepted))
-               (:r 0))
+             (count-accepted rule
+                             (cons workflow prev-workflows)
+                             accepted
+                             workflows)
              (let* ((accept-range (accept-range rule))
                     (reject-range (reject-range rule))
                     (num-accepted (count-accepted (fourth rule)
@@ -112,7 +119,8 @@
                                                                  accepted)
                                                   workflows)))
                (setf accepted (limit-ratings reject-range accepted))
-               num-accepted))))))
+               num-accepted)))))))
+
 (defun day19 (input)
   (destructuring-bind (workflows ratings) (run-parser (parse-file) input)
     (let ((workflow-table (iter
@@ -125,5 +133,5 @@
          (for rating in ratings)
          (when (eq :a (destination :in rating workflow-table))
            (collect rating))))
-      (count-accepted :crn '((:x (0 4000)) (:m (0 4000)) (:a (0 4000)) (:s (0 4000))) workflow-table))))
+      (count-accepted :in '() '((:x (1 4000)) (:m (1 4000)) (:a (1 4000)) (:s (1 4000))) workflow-table))))
 
