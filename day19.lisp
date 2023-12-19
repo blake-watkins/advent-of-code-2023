@@ -17,7 +17,7 @@
   (with-monad
     (assign name (parse-name))
     (assign rules (parse-bracketed (parse-list (parse-rule)) "{}"))
-    (unit (list name rules))))
+    (unit (cons name rules))))
 
 (defun parse-rating ()
   (with-monad
@@ -37,19 +37,17 @@
     (assign ratings (parse-lines (parse-ratings)))
     (unit (list workflows ratings))))
 
-(defun part-value (name ratings)
-  (second (assoc name ratings)))
-
 (defun matches-rule (rule ratings)
+  "If RATINGS match RULE return the destination workflow, otherwise NIL."
   (if (symbolp rule)
       rule
       (destructuring-bind (part-name op val dest) rule
-        (when (funcall (case op (#\< #'<) (#\> #'>))
-                       (part-value part-name ratings)
-                       val)
-          dest))))
+        (let ((part-value (second (assoc part-name ratings))))
+          (when (funcall (case op (#\< #'<) (#\> #'>)) part-value val)
+            dest)))))
 
 (defun destination (workflow ratings workflows)
+  "Return whether RATINGS are accepted (:A) or rejected (:R) when starting from WORKFLOW. "
   (if (member workflow '(:a :r))
       workflow
       (let* ((rules (gethash workflow workflows))
@@ -58,80 +56,61 @@
                                  (thereis (matches-rule rule ratings)))))
         (destination next-destination ratings workflows))))
 
-(defun sum-ratings (accepted)
-  (reduce #'+ (mapcar (lambda (ratings) (reduce #'+ (mapcar #'second ratings))) accepted)))
+(defun add-part-ratings (parts)
+  "Add each rating for each part in PARTS. "
+  (iter 
+    (for part in parts)
+    (summing (reduce #'+ part :key #'second))))
 
-(defun count-accepted-ratings (accepted)
-  (reduce #'* (mapcar (lambda (x) (interval-size (second x))) accepted)))
+(defun count-ratings-combinations (ratings-ranges)
+  "Count combinations by multiplying range size of each rating. "
+  (reduce #'* (mapcar #'second ratings-ranges) :key #'interval-size))
 
-(defun intersect-ratings (accepted-a accepted-b)
-  (map 'list (lambda (a b)
-               (list (first a) (interval-intersect (second a) (second b))))
-       accepted-a
-       accepted-b))
-
-(defun accept-range (rule)
+(defun get-range (rule accept-reject)
+  "Return (part-name range) list corresponding to acceptance/rejection of RULE."
   (destructuring-bind (part-name op val dest) rule
     (declare (ignore dest))
-    (case op
-      (#\< (list part-name (list 1 (1- val))))
-      (#\> (list part-name (list (1+ val) 4000))))))
+    (list part-name
+          (case op
+            (#\< (if (eq accept-reject :accept) `(1 ,(1- val)) `(,val 4000)))
+            (#\> (if (eq accept-reject :accept) `(,(1+ val) 4000) `(1 ,val)))))))
 
-(defun reject-range (rule)
-  (destructuring-bind (part-name op val dest) rule
-    (declare (ignore dest))
-    (case op
-      (#\< (list part-name (list val 4000)))
-      (#\> (list part-name (list 1 val))))))
+(defun limit-ratings (limit ratings)
+  "Intersect the rating in RATINGS by the (part-name range) LIMIT. "
+  (destructuring-bind (limit-name limit-range) limit
+    (iter
+      (for rating in ratings)
+      (for (part-name part-range) = rating)
+      (collect
+          (if (eq part-name limit-name)
+              (list part-name (interval-intersect part-range limit-range))
+              rating)))))
 
-(defun limit-ratings (range ratings)
-  (destructuring-bind (range-name range-range) range
-    (mapcar (lambda (rating)
-              (destructuring-bind (part-name rating-range) rating
-                (if (eq part-name range-name)
-                    (list part-name (interval-intersect range-range
-                                                        rating-range))
-                    rating)))
-            ratings)))
-
-(defun count-accepted (workflow prev-workflows accepted workflows)
-  (format t "~a ~a~%" (cons workflow prev-workflows) accepted)
-;;  (break)
-  (cond
-    ((member workflow prev-workflows) 0)
-    ((member workflow '(:a :r))
-     (ecase workflow
-       (:a (count-accepted-ratings accepted))
-       (:r 0)))
-    (t (iter
+(defun count-accepted (workflow accepted workflows)
+  "Get all combinations of accepted ratings starting from WORKFLOW with currently ACCEPTED ratings. "
+  (case workflow
+    (:a (count-ratings-combinations accepted))
+    (:r 0)
+    (otherwise
+     (iter
         (for rule in (gethash workflow workflows))
-        (summing
-         (if (symbolp rule)
-             (count-accepted rule
-                             (cons workflow prev-workflows)
-                             accepted
-                             workflows)
-             (let* ((accept-range (accept-range rule))
-                    (reject-range (reject-range rule))
-                    (num-accepted (count-accepted (fourth rule)
-                                                  (cons workflow prev-workflows)
-                                                  (limit-ratings accept-range
-                                                                 accepted)
-                                                  workflows)))
-               (setf accepted (limit-ratings reject-range accepted))
-               num-accepted)))))))
+        (if (symbolp rule)
+            (summing (count-accepted rule accepted workflows))
+            (let ((accept (limit-ratings (get-range rule :accept) accepted))
+                  (reject (limit-ratings (get-range rule :reject) accepted)))
+              (summing (count-accepted (fourth rule) accept workflows))
+              (setf accepted reject)))))))
 
-(defun day19 (input)
+(defun day19 (input &key (part 1))
   (destructuring-bind (workflows ratings) (run-parser (parse-file) input)
-    (let ((workflow-table (iter
-                            (with ret = (make-hash-table))
-                            (for (name rules) in workflows)
-                            (setf (gethash name ret) rules)
-                            (finally (return ret)))))
-      (sum-ratings
-       (iter
-         (for rating in ratings)
-         (when (eq :a (destination :in rating workflow-table))
-           (collect rating))))
-      (count-accepted :in '() '((:x (1 4000)) (:m (1 4000)) (:a (1 4000)) (:s (1 4000))) workflow-table))))
+    (let ((workflow-table (hash-table-from-alist workflows)))
+      (if (= part 1)
+          (add-part-ratings
+           (iter
+             (for rating in ratings)
+             (when (eq :a (destination :in rating workflow-table))
+               (collect rating))))
+          (count-accepted :in
+                          (mapcar (lambda (n) `(,n (1 4000))) '(:x :m :a :s))
+                          workflow-table)))))
 
