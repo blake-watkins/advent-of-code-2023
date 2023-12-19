@@ -5,37 +5,59 @@
 
 (defparameter *directions* '((-1 0) (0 1) (1 0) (0 -1) ))
 
+(defclass vertex ()
+  ((pos :initarg :pos :reader vertex-pos)
+   (dir :initarg :dir)
+   (straight :initarg :straight :reader vertex-straight)))
+
+(defmethod print-object ((object vertex) stream)
+  (print-unreadable-object (object stream :type t)
+    (with-slots (pos dir straight) object
+      (format stream "(~a ~a ~a)" pos dir straight))))
+
+(defmethod fset:compare ((v1 vertex) (v2 vertex))
+  (fset:compare-slots v1 v2 'pos 'dir 'straight))
+
 (defun turn (dir c-cw)
   (elt *directions*
        (mod (+ (position dir *directions* :test 'equal) (if (eq c-cw :cw) 1 -1))
             (length *directions*))))
 
-(defun neighbours (pos dir straight map)
-  (let ((dirs (if (>= straight 4)
-                  `((,(turn dir :cw) 1) (,(turn dir :ccw) 1))
-                  ())))
-    (when (< straight 10) (push (list dir (1+ straight)) dirs))
-    (remove-if-not
-     (lambda (pos) (gethash pos map))
-     (mapcar (lambda (info) `((,(point+ pos (first info))
-                               ,(first info)
-                               ,(second info))
-                              ,(gethash (point+ pos (first info)) map)))
-             dirs)
-     :key #'caar)))
+(defun get-next-vertices (vertex part)
+  (with-slots (pos dir straight) vertex
+    (let ((new-dirs
+	    (let ((turn-dirs (mapcar (lambda (d) `(,(turn dir d) 1)) '(:cw :ccw)))
+		  (straight-dir `((,dir ,(1+ straight)))))
+	      (if (= part 1)
+		  (append turn-dirs (when (< straight 3) straight-dir))
+		  (append (when (>= straight 4) turn-dirs)
+			  (when (< straight 10) straight-dir))))))
+      (iter
+	(for (new-dir new-straight) in new-dirs)
+	(collect (make-instance 'vertex
+				:pos (point+ pos new-dir)
+				:dir new-dir
+				:straight new-straight))))))
 
+(defun neighbours (vertex map part)
+  (iter
+    (for neighbour in (get-next-vertices vertex part))
+    (for cost = (gethash (vertex-pos neighbour) map))
+    (when cost (collect (list neighbour cost)))))
 
-(defun day17 (input)
+(defun day17 (input &key (part 1))
   (let* ((parsed (run-parser (parse-file) input))
          (map (hash-table-from-list-list parsed)))
     (iter
-      (with end = (hash-table-dimensions map))
-      (with parents = (make-hash-table :test 'equal))
-      (for (vertex parent distance) in-dijkstra-from '((0 0) (1 0) 0)
-           :neighbours (lambda (info)
-                         (neighbours (first info) (second info) (third info) map)))
-      (unless (gethash (first vertex) parents)
-        (setf (gethash (first vertex) parents) (first parent)))
-      (until (and (equal end (first vertex))
-                  (>= (third vertex) 4)))
-      (finally (return distance)))))
+      (for start-dir in '((0 1) (1 0)))
+      (minimize
+       (iter
+	 (with end = (hash-table-dimensions map))
+	 (for (vertex parent distance)
+              in-dijkstra-from
+              (make-instance 'vertex :pos '(0 0) :dir start-dir :straight 1)
+              :neighbours (lambda (vertex) (neighbours vertex map part)))
+	 (setf (gethash vertex parents) parent)
+	 (until (and (equal end (vertex-pos vertex))
+                     (or (= part 1) (>= (vertex-straight vertex) 4))))
+	 (finally (return distance )))))))
